@@ -31,7 +31,7 @@ slap_graph_t slap_graph_access_set_next(slap_graph_t, slap_graph_t);
 slap_graph_t slap_graph_update_set_next(slap_graph_t, slap_graph_t);
 slap_graph_t slap_graph_branch_set_then(slap_graph_t, slap_graph_t);
 slap_graph_t slap_graph_branch_set_else(slap_graph_t, slap_graph_t);
-
+size_t *slap_allocate_index_array(slap_context_t, size_t n);
 typedef enum : int {
   SLAP_GRAPH_START,
   SLAP_GRAPH_END,
@@ -51,8 +51,8 @@ ssize_t *slap_expr_get_coefficients(slap_expr_t);
 size_t slap_expr_get_length(slap_expr_t);
 ssize_t slap_expr_get_bias(slap_expr_t);
 
-slap_graph_t slap_extract_affine_loop(slap_context_t, char *path,
-                                      size_t length);
+slap_graph_t slap_extract_affine_loop(slap_context_t, char *path, size_t length,
+                                      size_t **vaddr, size_t *vaddr_len);
 
 void slap_sim_access(slap_sim_context_t, void *node_handle, size_t memref,
                      size_t offset);

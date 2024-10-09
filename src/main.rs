@@ -13,11 +13,12 @@ fn main() {
     let ctx = Context {
         arena: bumpalo::Bump::new(),
     };
-    let g = graph::Graph::new_from_file(&ctx, "example/gemm.mlir").expect("failed to parse mlir");
+    let (g, vaddrs) =
+        graph::Graph::new_from_file(&ctx, "example/gemm.mlir").expect("failed to parse mlir");
     unsafe {
         let ctx = simulator::SimulationCtx {
             block_size: 64,
-            virtual_addr: [(0, 0), (1, 40000), (2, 80000)].iter().cloned().collect(),
+            virtual_addr: vaddrs.iter().copied().enumerate().collect(),
             logic_time: 0,
             node_info: Default::default(),
         };

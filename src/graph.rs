@@ -168,15 +168,27 @@ extern "C" {
         ctx: *const Context,
         filename: *const std::os::raw::c_char,
         length: usize,
+        vaddr: *mut *const usize,
+        vaddr_len: *mut usize,
     ) -> Option<NonNull<Graph<'a>>>;
 }
 
 impl<'a> Graph<'a> {
-    pub fn new_from_file(ctx: &'a Context, filename: &str) -> Option<&'a Self> {
+    pub fn new_from_file(ctx: &'a Context, filename: &str) -> Option<(&'a Self, &'a [usize])> {
         let filename = std::ffi::CString::new(filename).unwrap();
         unsafe {
-            let graph = slap_extract_affine_loop(ctx, filename.as_ptr(), filename.as_bytes().len());
-            graph.map(|graph| graph.as_ref())
+            let mut vaddr_cell = std::ptr::null();
+            let mut vaddr_len = 0;
+            let graph = slap_extract_affine_loop(
+                ctx,
+                filename.as_ptr(),
+                filename.as_bytes().len(),
+                &mut vaddr_cell as _,
+                &mut vaddr_len,
+            );
+            graph
+                .map(|graph| graph.as_ref())
+                .map(|graph| (graph, std::slice::from_raw_parts(vaddr_cell, vaddr_len)))
         }
     }
 }
@@ -344,4 +356,13 @@ pub unsafe extern "C" fn slap_graph_get_identifer(graph: *const Graph<'_>) -> us
         Graph::Branch { ivar, .. } => ivar,
         _ => 0,
     }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn slap_allocate_index_array<'a>(
+    ctx: *const Context,
+    len: usize,
+) -> *mut usize {
+    let ctx = &*ctx;
+    ctx.arena.alloc_slice_fill_default(len).as_mut_ptr()
 }

@@ -34,17 +34,24 @@ void initialize(MLIRContext &context) {
   context.loadAllAvailableDialects();
 }
 
+struct MemInfo {
+  size_t id;
+  size_t virtual_address;
+};
+
 class ExtractContext {
   slap_context_t slap_ctx;
   llvm::DenseMap<Value, size_t> ivars;
-  llvm::DenseMap<Value, size_t> memrefs;
+  llvm::DenseMap<Value, MemInfo> memrefs;
   affine::AffineForOp parent;
   slap_graph_t parent_epilogue;
+  size_t assigned_address;
   void recordIVar(Value ivar) { ivars.try_emplace(ivar, ivars.size()); }
 
 public:
   ExtractContext(slap_context_t ctx, affine::AffineForOp entry)
-      : slap_ctx(ctx), ivars{}, parent(nullptr), parent_epilogue(nullptr) {
+      : slap_ctx(ctx), ivars{}, parent(nullptr), parent_epilogue(nullptr),
+        assigned_address(0) {
     recordIVar(entry.getInductionVar());
     entry.walk(
         [&](affine::AffineForOp op) { recordIVar(op.getInductionVar()); });
@@ -62,8 +69,23 @@ public:
   void setParentCondEpilogque(slap_graph_t parent) { parent_epilogue = parent; }
   affine::AffineForOp getParent() { return parent; }
   void setParent(affine::AffineForOp parent) { this->parent = parent; }
-  size_t getMemRef(Value memref) {
-    return memrefs.try_emplace(memref, memrefs.size()).first->second;
+  MemInfo getMemRef(Value memref) {
+    auto res =
+        memrefs.try_emplace(memref, MemInfo{memrefs.size(), assigned_address});
+    if (res.second) {
+      MemRefType mem = cast<MemRefType>(memref.getType());
+      auto shape = mem.getShape();
+      auto total_size = std::accumulate(shape.begin(), shape.end(), 1,
+                                        std::multiplies<int64_t>());
+      auto total_bytes = total_size * mem.getElementTypeBitWidth() / 8;
+      assigned_address += total_bytes;
+    }
+    return res.first->second;
+  }
+  size_t getNumOfMemRefs() { return memrefs.size(); }
+  template <typename F> void foreach_memref(F f) {
+    for (auto [_, info] : memrefs)
+      f(info);
   }
 };
 
@@ -194,7 +216,8 @@ slap_graph_t extractAffineAccess(Value memref, AffineMap map,
                                 affine_ctx.coeff.size(), affine_ctx.bias);
       auto memref_id = ctx.getMemRef(memref);
       auto next = extractOperation(next_node, ctx);
-      return slap_graph_new_access(ctx.getSLAPContext(), memref_id, expr, next);
+      return slap_graph_new_access(ctx.getSLAPContext(), memref_id.id, expr,
+                                   next);
     } else if (auto strided = dyn_cast<StridedLayoutAttr>(layout)) {
       //   if (!strided.hasStaticLayout())
       //     llvm_unreachable("dynamic layout is not supported");
@@ -301,17 +324,23 @@ slap_graph_t extractFromLoop(affine::AffineForOp loop, ExtractContext &ctx) {
       cond_node);
   return lb_graph;
 }
-slap_graph_t extractFromEntry(affine::AffineForOp entry, slap_context_t ctx) {
+slap_graph_t extractFromEntry(affine::AffineForOp entry, slap_context_t ctx,
+                              size_t **vaddr, size_t *vaddr_len) {
   ExtractContext extract_ctx{ctx, entry};
   auto loop = extractFromLoop(entry, extract_ctx);
   auto start = slap_graph_new_start(ctx, loop);
+  *vaddr = slap_allocate_index_array(ctx, extract_ctx.getNumOfMemRefs());
+  *vaddr_len = extract_ctx.getNumOfMemRefs();
+  extract_ctx.foreach_memref(
+      [vaddr](MemInfo info) { (*vaddr)[info.id] = info.virtual_address; });
   return start;
 }
 } // namespace
 
 extern "C" {
 slap_graph_t slap_extract_affine_loop(slap_context_t ctx, char *path,
-                                      size_t length) {
+                                      size_t length, size_t **vaddr,
+                                      size_t *vaddr_len) {
   using namespace mlir;
   using namespace llvm;
   MLIRContext context;
@@ -339,6 +368,6 @@ slap_graph_t slap_extract_affine_loop(slap_context_t ctx, char *path,
   if (!entry)
     return nullptr;
 
-  return extractFromEntry(entry, ctx);
+  return extractFromEntry(entry, ctx, vaddr, vaddr_len);
 }
 }
