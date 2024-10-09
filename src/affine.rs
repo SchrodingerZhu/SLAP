@@ -16,7 +16,7 @@ impl<'a> Expr<'a> {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn slpn_expr_new<'a>(
+pub unsafe extern "C" fn slap_expr_new<'a>(
     ctx: *mut Context,
     coefficent: *const isize,
     len: usize,

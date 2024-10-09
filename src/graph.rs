@@ -25,7 +25,7 @@ pub enum Graph<'a> {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn slpn_graph_new_start(
+pub unsafe extern "C" fn slap_graph_new_start(
     ctx: *const Context,
     next: *mut Graph<'_>,
 ) -> *mut Graph<'_> {
@@ -37,13 +37,13 @@ pub unsafe extern "C" fn slpn_graph_new_start(
 }
 
 #[no_mangle]
-pub extern "C" fn slpn_graph_new_end<'a>(ctx: *const Context) -> *mut Graph<'a> {
+pub extern "C" fn slap_graph_new_end<'a>(ctx: *const Context) -> *mut Graph<'a> {
     let ctx = unsafe { &*ctx };
     ctx.arena.alloc(UnsafeCell::new(Graph::End)).get_mut()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn slpn_graph_new_access<'a>(
+pub unsafe extern "C" fn slap_graph_new_access<'a>(
     ctx: *const Context,
     memref: usize,
     offset: *mut Expr<'a>,
@@ -60,7 +60,7 @@ pub unsafe extern "C" fn slpn_graph_new_access<'a>(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn slpn_graph_new_update<'a>(
+pub unsafe extern "C" fn slap_graph_new_update<'a>(
     ctx: *const Context,
     ivar: usize,
     expr: *mut Expr<'a>,
@@ -77,7 +77,7 @@ pub unsafe extern "C" fn slpn_graph_new_update<'a>(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn slpn_graph_new_branch<'a>(
+pub unsafe extern "C" fn slap_graph_new_branch<'a>(
     ctx: *const Context,
     ivar: usize,
     bound: *mut Expr<'a>,
@@ -97,7 +97,7 @@ pub unsafe extern "C" fn slpn_graph_new_branch<'a>(
 
 #[allow(improper_ctypes)]
 extern "C" {
-    fn slpn_extract_affine_loop<'a>(
+    fn slap_extract_affine_loop<'a>(
         ctx: *const Context,
         filename: *const std::os::raw::c_char,
         length: usize,
@@ -108,14 +108,14 @@ impl<'a> Graph<'a> {
     pub fn new_from_file(ctx: &'a Context, filename: &str) -> Option<&'a Self> {
         let filename = std::ffi::CString::new(filename).unwrap();
         unsafe {
-            let graph = slpn_extract_affine_loop(ctx, filename.as_ptr(), filename.as_bytes().len());
+            let graph = slap_extract_affine_loop(ctx, filename.as_ptr(), filename.as_bytes().len());
             graph.map(|graph| graph.as_ref())
         }
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn slpn_graph_start_set_next<'a>(
+pub unsafe extern "C" fn slap_graph_start_set_next<'a>(
     start: *mut Graph<'a>,
     next: *mut Graph<'a>,
 ) {
@@ -130,7 +130,7 @@ pub unsafe extern "C" fn slpn_graph_start_set_next<'a>(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn slpn_graph_access_set_next<'a>(
+pub unsafe extern "C" fn slap_graph_access_set_next<'a>(
     access: *mut Graph<'a>,
     next: *mut Graph<'a>,
 ) {
@@ -149,7 +149,7 @@ pub unsafe extern "C" fn slpn_graph_access_set_next<'a>(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn slpn_graph_update_set_next<'a>(
+pub unsafe extern "C" fn slap_graph_update_set_next<'a>(
     update: *mut Graph<'a>,
     next: *mut Graph<'a>,
 ) {
@@ -168,7 +168,7 @@ pub unsafe extern "C" fn slpn_graph_update_set_next<'a>(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn slpn_graph_branch_set_then(branch: *mut Graph<'_>, then: *mut Graph) {
+pub unsafe extern "C" fn slap_graph_branch_set_then(branch: *mut Graph<'_>, then: *mut Graph) {
     if let Some(mut branch) = NonNull::new(branch) {
         let branch = branch.as_mut();
         if let Graph::Branch {
@@ -184,7 +184,7 @@ pub unsafe extern "C" fn slpn_graph_branch_set_then(branch: *mut Graph<'_>, then
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn slpn_graph_branch_set_else(branch: *mut Graph<'_>, r#else: *mut Graph) {
+pub unsafe extern "C" fn slap_graph_branch_set_else(branch: *mut Graph<'_>, r#else: *mut Graph) {
     if let Some(mut branch) = NonNull::new(branch) {
         let branch = branch.as_mut();
         if let Graph::Branch {

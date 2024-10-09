@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION  3.20)
-project(SLPN LANGUAGES C CXX)
+project(SLAP LANGUAGES C CXX)
 find_package(MLIR REQUIRED CONFIG)
 include(${LLVM_DIR}/AddLLVM.cmake)
 include(${MLIR_DIR}/AddMLIR.cmake)

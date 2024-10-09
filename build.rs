@@ -22,7 +22,7 @@ fn main() {
     let pathbuf = PathBuf::from_str(&mlir_path).unwrap();
     let libdir = pathbuf.parent().unwrap().parent().unwrap();
     println!("cargo:rustc-link-search=native={}", libdir.display());
-    println!("cargo:rustc-link-lib=static=SLPNExtractor");
+    println!("cargo:rustc-link-lib=static=SLAPExtractor");
     println!("cargo:rustc-link-lib=dylib=MLIR");
     println!("cargo:rustc-link-lib=dylib=LLVM");
     println!("cargo:rustc-link-lib=dylib=stdc++");

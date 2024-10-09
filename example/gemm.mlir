@@ -30,7 +30,7 @@ module {
         // Store the final result back to matrix C
         affine.store %final_val, %C[%i, %j] : memref<100x100xf32>
       }
-    } { slpn.extract }
+    } { slap.extract }
     return
   }
 }

@@ -1,9 +1,9 @@
-#include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/OwningOpRef.h"
-#include "mlir/IR/Visitors.h"
-#include <llvm-20/llvm/ADT/DenseMap.h>
-#include <llvm-20/llvm/Support/ErrorHandling.h>
+#include <mlir/Dialect/Affine/IR/AffineOps.h>
+#include <mlir/IR/AffineExpr.h>
+#include <mlir/IR/OwningOpRef.h>
+#include <mlir/IR/Visitors.h>
+#include <llvm/ADT/DenseMap.h>
+#include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/SourceMgr.h>
 #include <mlir/IR/BuiltinOps.h>
@@ -15,7 +15,7 @@
 #include <mlir/Parser/Parser.h>
 
 #include <memory>
-#include <slpn.h>
+#include <slap.h>
 
 namespace {
 using namespace mlir;
@@ -28,7 +28,7 @@ void initialize(MLIRContext &context) {
 }
 
 class ExtractContext {
-  slpn_context_t slpn_ctx;
+  slap_context_t slap_ctx;
   llvm::DenseMap<Value, size_t> ivars;
   void record_ivar(Value ivar) {
     if (ivars.contains(ivar))
@@ -37,13 +37,13 @@ class ExtractContext {
   }
 
 public:
-  ExtractContext(slpn_context_t ctx, affine::AffineForOp entry)
-      : slpn_ctx(ctx), ivars{} {
+  ExtractContext(slap_context_t ctx, affine::AffineForOp entry)
+      : slap_ctx(ctx), ivars{} {
     record_ivar(entry.getInductionVar());
     entry.walk(
         [&](affine::AffineForOp op) { record_ivar(op.getInductionVar()); });
   }
-  slpn_context_t getSLPNContext() { return slpn_ctx; }
+  slap_context_t getSLAPContext() { return slap_ctx; }
   size_t getNumOfIvars() { return ivars.size(); }
   size_t getIVar(Value ivar) {
     auto it = ivars.find(ivar);
@@ -106,7 +106,7 @@ void extractAffineExpr(AffineExpr expr, AffineBoundContext &ctx) {
   }
 }
 
-slpn_expr_t extractAffineExpr(affine::AffineBound expr, ExtractContext &ctx) {
+slap_expr_t extractAffineExpr(affine::AffineBound expr, ExtractContext &ctx) {
   auto map = expr.getMap();
   if (map.getNumResults() != 1)
     llvm_unreachable("only single result affine map is supported");
@@ -118,29 +118,29 @@ slpn_expr_t extractAffineExpr(affine::AffineBound expr, ExtractContext &ctx) {
       .bias = 0,
   };
   extractAffineExpr(result, affine_ctx);
-  return slpn_expr_new(ctx.getSLPNContext(), affine_ctx.coeff.data(),
+  return slap_expr_new(ctx.getSLAPContext(), affine_ctx.coeff.data(),
                        affine_ctx.coeff.size(), affine_ctx.bias);
 }
 
-slpn_graph_t extractFromLoop(affine::AffineForOp entry, ExtractContext &ctx) {
+slap_graph_t extractFromLoop(affine::AffineForOp entry, ExtractContext &ctx) {
   affine::AffineBound lb = entry.getLowerBound();
   AffineMap map = lb.getMap();
   auto lb_expr = extractAffineExpr(lb, ctx);
-  slpn_graph_t lb_graph = slpn_graph_new_update(
-      ctx.getSLPNContext(), ctx.getIVar(entry.getInductionVar()), lb_expr,
-      slpn_graph_new_end(ctx.getSLPNContext()));
+  slap_graph_t lb_graph = slap_graph_new_update(
+      ctx.getSLAPContext(), ctx.getIVar(entry.getInductionVar()), lb_expr,
+      slap_graph_new_end(ctx.getSLAPContext()));
   return lb_graph;
 }
-slpn_graph_t extractFromEntry(affine::AffineForOp entry, slpn_context_t ctx) {
+slap_graph_t extractFromEntry(affine::AffineForOp entry, slap_context_t ctx) {
   ExtractContext extract_ctx{ctx, entry};
   auto loop = extractFromLoop(entry, extract_ctx);
-  auto start = slpn_graph_new_start(ctx, loop);
+  auto start = slap_graph_new_start(ctx, loop);
   return start;
 }
 } // namespace
 
 extern "C" {
-slpn_graph_t slpn_extract_affine_loop(slpn_context_t ctx, char *path,
+slap_graph_t slap_extract_affine_loop(slap_context_t ctx, char *path,
                                       size_t length) {
   using namespace mlir;
   using namespace llvm;
@@ -159,7 +159,7 @@ slpn_graph_t slpn_extract_affine_loop(slpn_context_t ctx, char *path,
     return nullptr;
   affine::AffineForOp entry;
   module->walk([&entry](affine::AffineForOp forOp) {
-    if (forOp->hasAttr("slpn.extract")) {
+    if (forOp->hasAttr("slap.extract")) {
       entry = forOp;
       return WalkResult::interrupt();
     }
