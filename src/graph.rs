@@ -1,8 +1,8 @@
-use std::{cell::UnsafeCell, ptr::NonNull};
+use std::{cell::UnsafeCell, collections::HashSet, ptr::NonNull};
 
 use crate::{affine::Expr, Context};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Graph<'a> {
     Start(Option<&'a Self>),
     End,
@@ -22,6 +22,73 @@ pub enum Graph<'a> {
         then: Option<&'a Self>,
         r#else: Option<&'a Self>,
     },
+}
+
+impl<'a> Graph<'a> {
+    pub fn format(
+        &self,
+        writer: &mut std::fmt::Formatter<'_>,
+        visited: &mut HashSet<NonNull<Self>>,
+    ) -> std::fmt::Result {
+        let token = NonNull::from(self);
+        if visited.contains(&token) {
+            write!(writer, "...")?;
+            return Ok(());
+        }
+        visited.insert(token);
+        match self {
+            Graph::Start(next) => {
+                write!(writer, "Start(")?;
+                if let Some(next) = next {
+                    next.format(writer, visited)?;
+                }
+                write!(writer, ")")
+            }
+            Graph::End => {
+                write!(writer, "End")
+            }
+            Graph::Access {
+                memref,
+                offset,
+                next,
+            } => {
+                write!(writer, "Access({}, {:?}, ", memref, offset)?;
+                if let Some(next) = next {
+                    next.format(writer, visited)?;
+                }
+                write!(writer, ")")
+            }
+            Graph::Update { ivar, expr, next } => {
+                write!(writer, "Update({}, {:?}, ", ivar, expr)?;
+                if let Some(next) = next {
+                    next.format(writer, visited)?;
+                }
+                write!(writer, ")")
+            }
+            Graph::Branch {
+                ivar,
+                bound,
+                then,
+                r#else,
+            } => {
+                write!(writer, "Branch({}, {:?}, ", ivar, bound)?;
+                if let Some(then) = then {
+                    then.format(writer, visited)?;
+                    write!(writer, ", ")?;
+                }
+                if let Some(r#else) = r#else {
+                    r#else.format(writer, visited)?;
+                }
+                write!(writer, ")")
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for Graph<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.format(f, &mut HashSet::new())
+    }
 }
 
 #[no_mangle]
@@ -123,8 +190,6 @@ pub unsafe extern "C" fn slap_graph_start_set_next<'a>(
         let start = start.as_mut();
         if let Graph::Start(ref mut field) = start {
             *field = NonNull::new(next).map(|ptr| ptr.as_ref());
-        } else {
-            panic!("expected start node");
         }
     }
 }
@@ -142,8 +207,6 @@ pub unsafe extern "C" fn slap_graph_access_set_next<'a>(
         } = access
         {
             *field = NonNull::new(next).map(|ptr| ptr.as_ref());
-        } else {
-            panic!("expected access node");
         }
     }
 }
@@ -161,8 +224,6 @@ pub unsafe extern "C" fn slap_graph_update_set_next<'a>(
         } = update
         {
             *field = NonNull::new(next).map(|ptr| ptr.as_ref());
-        } else {
-            panic!("expected update node");
         }
     }
 }
@@ -177,8 +238,6 @@ pub unsafe extern "C" fn slap_graph_branch_set_then(branch: *mut Graph<'_>, then
         } = branch
         {
             *field = NonNull::new(then).map(|ptr| ptr.as_ref());
-        } else {
-            panic!("expected branch node");
         }
     }
 }
@@ -193,8 +252,6 @@ pub unsafe extern "C" fn slap_graph_branch_set_else(branch: *mut Graph<'_>, r#el
         } = branch
         {
             *field = NonNull::new(r#else).map(|ptr| ptr.as_ref());
-        } else {
-            panic!("expected branch node");
         }
     }
 }

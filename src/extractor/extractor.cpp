@@ -1,3 +1,5 @@
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/MemoryBuffer.h>
@@ -30,6 +32,8 @@ void initialize(MLIRContext &context) {
 class ExtractContext {
   slap_context_t slap_ctx;
   llvm::DenseMap<Value, size_t> ivars;
+  affine::AffineForOp parent;
+  slap_graph_t parent_epilogue;
   void record_ivar(Value ivar) {
     if (ivars.contains(ivar))
       return;
@@ -38,7 +42,7 @@ class ExtractContext {
 
 public:
   ExtractContext(slap_context_t ctx, affine::AffineForOp entry)
-      : slap_ctx(ctx), ivars{} {
+      : slap_ctx(ctx), ivars{}, parent(nullptr), parent_epilogue(nullptr) {
     record_ivar(entry.getInductionVar());
     entry.walk(
         [&](affine::AffineForOp op) { record_ivar(op.getInductionVar()); });
@@ -50,6 +54,29 @@ public:
     if (it == ivars.end())
       llvm_unreachable("induction variable not found");
     return it->second;
+  }
+  slap_graph_t getParentEpilogue() { return parent_epilogue; }
+  void setParentCondEpilogque(slap_graph_t parent) { parent_epilogue = parent; }
+  affine::AffineForOp getParent() { return parent; }
+  void setParent(affine::AffineForOp parent) { this->parent = parent; }
+};
+
+class ParentGuard {
+  ExtractContext &ctx;
+  slap_graph_t old_parent;
+  affine::AffineForOp old_loop;
+
+public:
+  ParentGuard(ExtractContext &ctx, slap_graph_t parent,
+              affine::AffineForOp loop)
+      : ctx(ctx), old_parent(ctx.getParentEpilogue()),
+        old_loop(ctx.getParent()) {
+    ctx.setParentCondEpilogque(parent);
+    ctx.setParent(loop);
+  }
+  ~ParentGuard() {
+    ctx.setParentCondEpilogque(old_parent);
+    ctx.setParent(old_loop);
   }
 };
 
@@ -126,13 +153,58 @@ slap_expr_t extractAffineExpr(affine::AffineBound expr, ExtractContext &ctx) {
                        affine_ctx.coeff.size(), affine_ctx.bias);
 }
 
-slap_graph_t extractFromLoop(affine::AffineForOp entry, ExtractContext &ctx) {
-  affine::AffineBound lb = entry.getLowerBound();
+slap_graph_t createEpilogue(affine::AffineForOp loop, ExtractContext &ctx,
+                            slap_graph_t cond_node) {
+  size_t ivar = ctx.getIVar(loop.getInductionVar());
+  ssize_t step = loop.getStepAsInt();
+  llvm::SmallVector<ssize_t> coeff(ctx.getNumOfIvars(), 0);
+  coeff[ivar] = 1;
+  slap_expr_t expr =
+      slap_expr_new(ctx.getSLAPContext(), coeff.data(), coeff.size(), step);
+  return slap_graph_new_update(ctx.getSLAPContext(), ivar, expr, cond_node);
+}
+
+slap_graph_t extractOperation(Operation *op, ExtractContext &ctx);
+slap_graph_t extractFromLoop(affine::AffineForOp loop, ExtractContext &ctx);
+
+slap_graph_t extractTerminator(Operation *op, ExtractContext &ctx) {
+  if (isa<func::ReturnOp>(op))
+    return slap_graph_new_end(ctx.getSLAPContext());
+  if (isa<affine::AffineYieldOp>(op))
+    return ctx.getParentEpilogue();
+  llvm_unreachable("unsupported terminator");
+}
+
+slap_graph_t extractOperation(Operation *op, ExtractContext &ctx) {
+  if (op->hasTrait<OpTrait::IsTerminator>())
+    return extractTerminator(op, ctx);
+  if (isa<affine::AffineForOp>(op))
+    return extractFromLoop(cast<affine::AffineForOp>(op), ctx);
+  if (isa<RegionBranchOpInterface>(op))
+    llvm_unreachable(
+        "region branch other than affine for is not supported yet");
+  [[clang::musttail]] return extractOperation(op->getNextNode(), ctx);
+}
+
+slap_graph_t extractFromLoop(affine::AffineForOp loop, ExtractContext &ctx) {
+  affine::AffineBound lb = loop.getLowerBound();
   AffineMap map = lb.getMap();
+  auto ub_expr = extractAffineExpr(loop.getUpperBound(), ctx);
+  slap_graph_t cond_node = slap_graph_new_branch(
+      ctx.getSLAPContext(), ctx.getIVar(loop.getInductionVar()), ub_expr,
+      nullptr, nullptr);
+  slap_graph_t epilogue = createEpilogue(loop, ctx, cond_node);
+  {
+    ParentGuard guard(ctx, epilogue, loop);
+    slap_graph_t body = extractOperation(&loop.getBody()->front(), ctx);
+    slap_graph_branch_set_then(cond_node, body);
+  }
+  auto next = extractOperation(loop->getNextNode(), ctx);
+  slap_graph_branch_set_else(cond_node, next);
   auto lb_expr = extractAffineExpr(lb, ctx);
   slap_graph_t lb_graph = slap_graph_new_update(
-      ctx.getSLAPContext(), ctx.getIVar(entry.getInductionVar()), lb_expr,
-      slap_graph_new_end(ctx.getSLAPContext()));
+      ctx.getSLAPContext(), ctx.getIVar(loop.getInductionVar()), lb_expr,
+      cond_node);
   return lb_graph;
 }
 slap_graph_t extractFromEntry(affine::AffineForOp entry, slap_context_t ctx) {

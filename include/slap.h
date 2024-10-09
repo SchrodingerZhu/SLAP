@@ -25,10 +25,10 @@ slap_graph_t slap_graph_new_branch(slap_context_t, size_t ivar,
                                    slap_graph_t else_);
 
 slap_graph_t slap_graph_start_set_next(slap_graph_t, slap_graph_t);
-slap_graph_t slap_graph_new_access_set_next(slap_graph_t, slap_graph_t);
-slap_graph_t slap_graph_new_update_set_next(slap_graph_t, slap_graph_t);
-slap_graph_t slap_graph_new_branch_set_then(slap_graph_t, slap_graph_t);
-slap_graph_t slap_graph_new_branch_set_else(slap_graph_t, slap_graph_t);
+slap_graph_t slap_graph_access_set_next(slap_graph_t, slap_graph_t);
+slap_graph_t slap_graph_update_set_next(slap_graph_t, slap_graph_t);
+slap_graph_t slap_graph_branch_set_then(slap_graph_t, slap_graph_t);
+slap_graph_t slap_graph_branch_set_else(slap_graph_t, slap_graph_t);
 
 slap_graph_t slap_extract_affine_loop(slap_context_t, char *path,
                                       size_t length);
