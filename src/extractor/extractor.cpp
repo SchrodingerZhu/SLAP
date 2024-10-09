@@ -1,15 +1,15 @@
-#include <mlir/Dialect/Affine/IR/AffineOps.h>
-#include <mlir/IR/AffineExpr.h>
-#include <mlir/IR/OwningOpRef.h>
-#include <mlir/IR/Visitors.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/SourceMgr.h>
+#include <mlir/Dialect/Affine/IR/AffineOps.h>
+#include <mlir/IR/AffineExpr.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Dialect.h>
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/OpImplementation.h>
+#include <mlir/IR/OwningOpRef.h>
+#include <mlir/IR/Visitors.h>
 #include <mlir/InitAllDialects.h>
 #include <mlir/InitAllExtensions.h>
 #include <mlir/Parser/Parser.h>
@@ -54,10 +54,13 @@ public:
 };
 
 struct AffineBoundContext {
+  ExtractContext &ext_ctx;
   affine::AffineBound bound;
   std::optional<AffineExpr> parent;
   llvm::SmallVector<ssize_t> coeff;
   ssize_t bias;
+
+  size_t getIVar(Value ivar) { return ext_ctx.getIVar(ivar); }
 };
 
 void extractAffineExpr(AffineExpr expr, AffineBoundContext &ctx) {
@@ -87,7 +90,7 @@ void extractAffineExpr(AffineExpr expr, AffineBoundContext &ctx) {
       auto dim = cast<AffineDimExpr>(mul.getLHS());
       auto pos = dim.getPosition();
       auto value = ctx.bound.getOperand(pos);
-      ctx.coeff[pos] = constant.getValue();
+      ctx.coeff[ctx.getIVar(value)] = constant.getValue();
     }
     break;
   }
@@ -95,7 +98,7 @@ void extractAffineExpr(AffineExpr expr, AffineBoundContext &ctx) {
     auto dim = cast<AffineDimExpr>(expr);
     auto pos = dim.getPosition();
     auto value = ctx.bound.getOperand(pos);
-    ctx.coeff[pos] = 1;
+    ctx.coeff[ctx.getIVar(value)] = 1;
     break;
   }
   case AffineExprKind::SymbolId:
@@ -112,6 +115,7 @@ slap_expr_t extractAffineExpr(affine::AffineBound expr, ExtractContext &ctx) {
     llvm_unreachable("only single result affine map is supported");
   auto result = map.getResult(0);
   auto affine_ctx = AffineBoundContext{
+      .ext_ctx = ctx,
       .bound = expr,
       .parent = std::nullopt,
       .coeff = llvm::SmallVector<ssize_t>(ctx.getNumOfIvars(), 0),
