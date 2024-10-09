@@ -176,14 +176,16 @@ slap_graph_t extractTerminator(Operation *op, ExtractContext &ctx) {
 }
 
 slap_graph_t extractOperation(Operation *op, ExtractContext &ctx) {
-  if (op->hasTrait<OpTrait::IsTerminator>())
-    return extractTerminator(op, ctx);
-  if (isa<affine::AffineForOp>(op))
-    return extractFromLoop(cast<affine::AffineForOp>(op), ctx);
-  if (isa<RegionBranchOpInterface>(op))
-    llvm_unreachable(
-        "region branch other than affine for is not supported yet");
-  [[clang::musttail]] return extractOperation(op->getNextNode(), ctx);
+  for (;;) {
+    if (op->hasTrait<OpTrait::IsTerminator>())
+      return extractTerminator(op, ctx);
+    if (isa<affine::AffineForOp>(op))
+      return extractFromLoop(cast<affine::AffineForOp>(op), ctx);
+    if (isa<RegionBranchOpInterface>(op))
+      llvm_unreachable(
+          "region branch other than affine for is not supported yet");
+    op = op->getNextNode();
+  }
 }
 
 slap_graph_t extractFromLoop(affine::AffineForOp loop, ExtractContext &ctx) {
