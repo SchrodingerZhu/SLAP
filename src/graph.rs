@@ -255,3 +255,93 @@ pub unsafe extern "C" fn slap_graph_branch_set_else(branch: *mut Graph<'_>, r#el
         }
     }
 }
+
+/*
+typedef enum : int {
+  SLAP_GRAPH_START,
+  SLAP_GRAPH_END,
+  SLAP_GRAPH_ACCESS,
+  SLAP_GRAPH_UPDATE,
+  SLAP_GRAPH_BRANCH,
+} slap_graph_kind;
+
+slap_graph_kind slap_graph_get_kind(slap_graph_t);
+slap_graph_t slap_graph_get_next(slap_graph_t);
+slap_graph_t slap_graph_get_then(slap_graph_t);
+slap_graph_t slap_graph_get_else(slap_graph_t);
+slap_expr_t slap_graph_get_expr(slap_graph_t);
+size_t slap_graph_get_identifer(slap_graph_t);
+*/
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy)]
+pub enum GraphKind {
+    Start = 0,
+    End = 1,
+    Access = 2,
+    Update = 3,
+    Branch = 4,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn slap_graph_get_kind(graph: *const Graph<'_>) -> GraphKind {
+    let graph = &*graph;
+    match graph {
+        Graph::Start(_) => GraphKind::Start,
+        Graph::End => GraphKind::End,
+        Graph::Access { .. } => GraphKind::Access,
+        Graph::Update { .. } => GraphKind::Update,
+        Graph::Branch { .. } => GraphKind::Branch,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn slap_graph_get_expr(graph: *const Graph<'_>) -> *const Expr<'_> {
+    let graph = &*graph;
+    match *graph {
+        Graph::Access { offset, .. } => offset,
+        Graph::Update { expr, .. } => expr,
+        Graph::Branch { bound, .. } => bound,
+        _ => std::ptr::null(),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn slap_graph_get_next(graph: *const Graph<'_>) -> *const Graph<'_> {
+    let graph = &*graph;
+    match graph {
+        Graph::Start(next) => next.map(|ptr| ptr as _).unwrap_or(std::ptr::null()),
+        Graph::Access { next, .. } => next.map(|ptr| ptr as _).unwrap_or(std::ptr::null()),
+        Graph::Update { next, .. } => next.map(|ptr| ptr as _).unwrap_or(std::ptr::null()),
+        _ => std::ptr::null(),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn slap_graph_get_then(graph: *const Graph<'_>) -> *const Graph<'_> {
+    let graph = &*graph;
+    match graph {
+        Graph::Branch { then, .. } => then.map(|ptr| ptr as _).unwrap_or(std::ptr::null()),
+        _ => std::ptr::null(),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn slap_graph_get_else(graph: *const Graph<'_>) -> *const Graph<'_> {
+    let graph = &*graph;
+    match graph {
+        Graph::Branch { r#else, .. } => r#else.map(|ptr| ptr as _).unwrap_or(std::ptr::null()),
+        _ => std::ptr::null(),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn slap_graph_get_identifer(graph: *const Graph<'_>) -> usize {
+    let graph = &*graph;
+    match *graph {
+        Graph::Access { memref, .. } => memref,
+        Graph::Update { ivar, .. } => ivar,
+        Graph::Branch { ivar, .. } => ivar,
+        _ => 0,
+    }
+}

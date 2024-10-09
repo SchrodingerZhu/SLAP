@@ -28,3 +28,24 @@ pub unsafe extern "C" fn slap_expr_new<'a>(
         .alloc(UnsafeCell::new(Expr::new(ctx, coefficent, bias)))
         .get_mut()
 }
+
+/*
+ssize_t *slap_expr_get_coefficients(slap_expr_t);
+size_t slap_expr_get_length(slap_expr_t);
+ssize_t slap_expr_get_bias(slap_expr_t);
+*/
+
+#[no_mangle]
+pub unsafe extern "C" fn slap_expr_get_coefficients(expr: *const Expr) -> *const isize {
+    (*expr).coefficent.as_ptr()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn slap_expr_get_length(expr: *const Expr) -> usize {
+    (*expr).coefficent.len()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn slap_expr_get_bias(expr: *const Expr) -> isize {
+    (*expr).bias
+}

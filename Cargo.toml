@@ -6,6 +6,7 @@ build = "build.rs"
 
 [dependencies]
 bumpalo = { version = "3.16.0", features = ["boxed", "collections"] }
+rustc-hash = "2.0.0"
 
 [build-dependencies]
 cmake = "0.1.51"

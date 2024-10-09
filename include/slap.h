@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <stddef.h>
 #include <sys/types.h>
 
@@ -10,6 +11,7 @@ extern "C" {
 typedef struct slap_expr *slap_expr_t;
 typedef struct slap_graph *slap_graph_t;
 typedef struct slap_context const *slap_context_t;
+typedef struct slap_sim_context *slap_sim_context_t;
 
 slap_expr_t slap_expr_new(slap_context_t, ssize_t *coeffs, size_t n,
                           ssize_t bias);
@@ -30,8 +32,30 @@ slap_graph_t slap_graph_update_set_next(slap_graph_t, slap_graph_t);
 slap_graph_t slap_graph_branch_set_then(slap_graph_t, slap_graph_t);
 slap_graph_t slap_graph_branch_set_else(slap_graph_t, slap_graph_t);
 
+typedef enum : int {
+  SLAP_GRAPH_START,
+  SLAP_GRAPH_END,
+  SLAP_GRAPH_ACCESS,
+  SLAP_GRAPH_UPDATE,
+  SLAP_GRAPH_BRANCH,
+} slap_graph_kind;
+
+slap_graph_kind slap_graph_get_kind(slap_graph_t);
+slap_graph_t slap_graph_get_next(slap_graph_t);
+slap_graph_t slap_graph_get_then(slap_graph_t);
+slap_graph_t slap_graph_get_else(slap_graph_t);
+slap_expr_t slap_graph_get_expr(slap_graph_t);
+size_t slap_graph_get_identifer(slap_graph_t);
+
+ssize_t *slap_expr_get_coefficients(slap_expr_t);
+size_t slap_expr_get_length(slap_expr_t);
+ssize_t slap_expr_get_bias(slap_expr_t);
+
 slap_graph_t slap_extract_affine_loop(slap_context_t, char *path,
                                       size_t length);
+
+void slap_sim_access(slap_sim_context_t, void *node_handle, size_t memref,
+                     size_t offset);
 
 #ifdef __cplusplus
 }
