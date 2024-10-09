@@ -11,7 +11,6 @@ pub struct NodeInfo {
 }
 
 pub struct SimulationCtx {
-    pub(crate) data_size: usize,
     pub(crate) block_size: usize,
     pub(crate) virtual_addr: FxHashMap<usize, usize>,
     pub(crate) logic_time: usize,
@@ -23,7 +22,7 @@ impl SimulationCtx {
         let time = self.logic_time;
         self.logic_time += 1;
         let vaddr = *self.virtual_addr.get(&memref).unwrap();
-        let block_id = (vaddr + offset * self.data_size) / self.block_size;
+        let block_id = (vaddr + offset) / self.block_size;
         let node_info = self.node_info.entry(node).or_default();
         let node_info = unsafe { &mut *node_info.get() };
         let logic_time = node_info.logic_time.entry(block_id).or_insert(time);
@@ -42,7 +41,6 @@ impl SimulationCtx {
 impl std::fmt::Debug for SimulationCtx {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SimulationCtx")
-            .field("data_size", &self.data_size)
             .field("block_size", &self.block_size)
             .field("virtual_addr", &self.virtual_addr)
             .field("logic_time", &self.logic_time)

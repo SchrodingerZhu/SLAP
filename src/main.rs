@@ -16,7 +16,6 @@ fn main() {
     let g = graph::Graph::new_from_file(&ctx, "example/gemm.mlir").expect("failed to parse mlir");
     unsafe {
         let ctx = simulator::SimulationCtx {
-            data_size: 4,
             block_size: 64,
             virtual_addr: [(0, 0), (1, 40000), (2, 80000)].iter().cloned().collect(),
             logic_time: 0,

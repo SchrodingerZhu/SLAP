@@ -187,6 +187,7 @@ slap_graph_t extractAffineAccess(Value memref, AffineMap map,
           .bias = 0,
           .operands = operands,
       };
+      acc = acc * (memTy.getElementTypeBitWidth() / 8);
       acc = simplifyAffineExpr(acc, map.getNumDims(), map.getNumSymbols());
       extractAffineExpr(acc, affine_ctx);
       auto expr = slap_expr_new(ctx.getSLAPContext(), affine_ctx.coeff.data(),
@@ -195,31 +196,34 @@ slap_graph_t extractAffineAccess(Value memref, AffineMap map,
       auto next = extractOperation(next_node, ctx);
       return slap_graph_new_access(ctx.getSLAPContext(), memref_id, expr, next);
     } else if (auto strided = dyn_cast<StridedLayoutAttr>(layout)) {
-      if (!strided.hasStaticLayout())
-        llvm_unreachable("dynamic layout is not supported");
-      auto offset = strided.getOffset();
-      auto stride = strided.getStrides();
-      auto exprs = map.getResults();
-      auto zip = llvm::zip(stride, exprs);
-      auto acc = std::accumulate(
-          zip.begin(), zip.end(), getAffineConstantExpr(offset, mctx),
-          [](AffineExpr acc, std::tuple<int64_t, AffineExpr> pair) {
-            auto [strided, expr] = pair;
-            return acc + strided * expr;
-          });
-      auto affine_ctx = AffineContext{
-          .ext_ctx = ctx,
-          .parent = std::nullopt,
-          .coeff = llvm::SmallVector<ssize_t>(ctx.getNumOfIvars(), 0),
-          .bias = 0,
-          .operands = operands,
-      };
-      extractAffineExpr(acc, affine_ctx);
-      auto expr = slap_expr_new(ctx.getSLAPContext(), affine_ctx.coeff.data(),
-                                affine_ctx.coeff.size(), affine_ctx.bias);
-      auto memref_id = ctx.getMemRef(memref);
-      auto next = extractOperation(next_node, ctx);
-      return slap_graph_new_access(ctx.getSLAPContext(), memref_id, expr, next);
+      //   if (!strided.hasStaticLayout())
+      //     llvm_unreachable("dynamic layout is not supported");
+      //   auto offset = strided.getOffset();
+      //   auto stride = strided.getStrides();
+      //   auto exprs = map.getResults();
+      //   auto zip = llvm::zip(stride, exprs);
+      //   auto acc = std::accumulate(
+      //       zip.begin(), zip.end(), getAffineConstantExpr(offset, mctx),
+      //       [](AffineExpr acc, std::tuple<int64_t, AffineExpr> pair) {
+      //         auto [strided, expr] = pair;
+      //         return acc + strided * expr;
+      //       });
+      //   auto affine_ctx = AffineContext{
+      //       .ext_ctx = ctx,
+      //       .parent = std::nullopt,
+      //       .coeff = llvm::SmallVector<ssize_t>(ctx.getNumOfIvars(), 0),
+      //       .bias = 0,
+      //       .operands = operands,
+      //   };
+      //   extractAffineExpr(acc, affine_ctx);
+      //   auto expr = slap_expr_new(ctx.getSLAPContext(),
+      //   affine_ctx.coeff.data(),
+      //                             affine_ctx.coeff.size(), affine_ctx.bias);
+      //   auto memref_id = ctx.getMemRef(memref);
+      //   auto next = extractOperation(next_node, ctx);
+      //   return slap_graph_new_access(ctx.getSLAPContext(), memref_id, expr,
+      //   next);
+      llvm_unreachable("strided layout is not supported");
     }
     llvm_unreachable("unsupported layout");
   }
