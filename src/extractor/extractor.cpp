@@ -40,21 +40,30 @@ class ExtractContext {
   llvm::DenseMap<Value, size_t> memrefs;
   affine::AffineForOp parent;
   slap_graph_t parent_epilogue;
+  void recordIVar(Value ivar) { ivars.try_emplace(ivar, ivars.size()); }
 
 public:
   ExtractContext(slap_context_t ctx, affine::AffineForOp entry)
-      : slap_ctx(ctx), ivars{}, parent(nullptr), parent_epilogue(nullptr) {}
+      : slap_ctx(ctx), ivars{}, parent(nullptr), parent_epilogue(nullptr) {
+    recordIVar(entry.getInductionVar());
+    entry.walk(
+        [&](affine::AffineForOp op) { recordIVar(op.getInductionVar()); });
+  }
   slap_context_t getSLAPContext() { return slap_ctx; }
   size_t getNumOfIvars() { return ivars.size(); }
   size_t getIVar(Value ivar) {
-    return ivars.insert({ivar, ivars.size()}).first->second;
+    auto it = ivars.find(ivar);
+    if (it == ivars.end()) {
+      llvm_unreachable("induction variable not found");
+    }
+    return it->second;
   }
   slap_graph_t getParentEpilogue() { return parent_epilogue; }
   void setParentCondEpilogque(slap_graph_t parent) { parent_epilogue = parent; }
   affine::AffineForOp getParent() { return parent; }
   void setParent(affine::AffineForOp parent) { this->parent = parent; }
   size_t getMemRef(Value memref) {
-    return memrefs.insert({memref, memrefs.size()}).first->second;
+    return memrefs.try_emplace(memref, memrefs.size()).first->second;
   }
 };
 
