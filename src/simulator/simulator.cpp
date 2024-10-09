@@ -21,13 +21,13 @@
 namespace {
 
 llvm::FunctionType *getExternalAccessType(llvm::LLVMContext &ctx) {
-  /* void slap_sim_access(slap_sim_context_t, void* node_handle, size_t memref,
-                   size_t offset);*/
+  /* void slap_sim_access(slap_sim_context_t, size_t node_id,  size_t
+   * block_id);*/
   auto void_type = llvm::Type::getVoidTy(ctx);
   auto size_t_ty = llvm::Type::getInt64Ty(ctx);
   auto ptr_ty = void_type->getPointerTo();
-  return llvm::FunctionType::get(
-      void_type, {ptr_ty, size_t_ty, size_t_ty, size_t_ty}, false);
+  return llvm::FunctionType::get(void_type, {ptr_ty, size_t_ty, size_t_ty},
+                                 false);
 }
 
 llvm::FunctionType *getFunctionType(llvm::LLVMContext &ctx) {
@@ -45,15 +45,16 @@ class CodegenContext {
   llvm::DenseMap<slap_graph_t, llvm::BasicBlock *> state_map;
   llvm::DenseMap<size_t, llvm::AllocaInst *> ivar_map;
   llvm::BasicBlock *entry;
+  slap_sim_context_t sim_ctx;
 
 public:
-  CodegenContext()
+  CodegenContext(slap_sim_context_t sim_ctx)
       : ctx(std::make_unique<llvm::LLVMContext>()),
         module(std::make_unique<llvm::Module>("simulator", *ctx)),
         func(llvm::Function::Create(getFunctionType(*ctx),
                                     llvm::Function::ExternalLinkage,
                                     "simulation_entrypoint", *module)),
-        builder(*ctx), state_map() {}
+        builder(*ctx), state_map(), sim_ctx(sim_ctx) {}
 
 private:
   llvm::BasicBlock *getBasicBlock(slap_graph_t node) {
@@ -134,12 +135,17 @@ private:
       this->builder.SetInsertPoint(bb);
       auto expr = slap_graph_get_expr(node);
       auto offset = this->emitExpr(expr);
-      auto memref = this->builder.getInt64(slap_graph_get_identifer(node));
-      auto raw_handle =
-          this->builder.getInt64(reinterpret_cast<uintptr_t>(node));
+      auto memref = slap_graph_get_identifer(node);
+      auto vaddr = slap_sim_get_memref_vaddr(sim_ctx, memref);
+      auto block_sz = slap_sim_get_block_size(sim_ctx);
+      auto node_id = slap_sim_get_node_id(sim_ctx, node);
+      auto block_id = this->builder.CreateUDiv(
+          this->builder.CreateAdd(offset, this->builder.getInt64(vaddr)),
+          this->builder.getInt64(block_sz));
       auto access = this->getExternalAccessArg();
-      this->builder.CreateCall(getExternalAccessType(*ctx), access,
-                               {getCtxArg(), raw_handle, memref, offset});
+      this->builder.CreateCall(
+          getExternalAccessType(*ctx), access,
+          {getCtxArg(), this->builder.getInt64(node_id), block_id});
       auto next = slap_graph_get_next(node);
       auto next_bb = this->emitSimulation(next);
       this->builder.SetInsertPoint(bb);
@@ -211,7 +217,7 @@ public:
     optimize();
   }
 
-  void run(slap_sim_context_t sim_ctx) {
+  void run() {
     auto jit = llvm::orc::LLJITBuilder().create();
     if (!jit)
       llvm::report_fatal_error("Failed to create JIT");
@@ -237,7 +243,7 @@ extern "C" void slap_initialize_llvm() {
 
 extern "C" void slap_run_simulation(slap_sim_context_t ctx,
                                     slap_graph_t graph) {
-  CodegenContext cg_ctx;
+  CodegenContext cg_ctx(ctx);
   cg_ctx.process(graph);
-  cg_ctx.run(ctx);
+  cg_ctx.run();
 }

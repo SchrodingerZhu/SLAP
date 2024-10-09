@@ -359,10 +359,7 @@ pub unsafe extern "C" fn slap_graph_get_identifer(graph: *const Graph<'_>) -> us
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn slap_allocate_index_array<'a>(
-    ctx: *const Context,
-    len: usize,
-) -> *mut usize {
+pub unsafe extern "C" fn slap_allocate_index_array(ctx: *const Context, len: usize) -> *mut usize {
     let ctx = &*ctx;
     ctx.arena.alloc_slice_fill_default(len).as_mut_ptr()
 }

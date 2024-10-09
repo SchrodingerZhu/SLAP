@@ -54,8 +54,10 @@ ssize_t slap_expr_get_bias(slap_expr_t);
 slap_graph_t slap_extract_affine_loop(slap_context_t, char *path, size_t length,
                                       size_t **vaddr, size_t *vaddr_len);
 
-void slap_sim_access(slap_sim_context_t, void *node_handle, size_t memref,
-                     size_t offset);
+void slap_sim_access(slap_sim_context_t, size_t node_id, size_t block_id);
+size_t slap_sim_get_memref_vaddr(slap_sim_context_t, size_t memref_id);
+size_t slap_sim_get_node_id(slap_sim_context_t, slap_graph_t graph);
+size_t slap_sim_get_block_size(slap_sim_context_t);
 
 #ifdef __cplusplus
 }
