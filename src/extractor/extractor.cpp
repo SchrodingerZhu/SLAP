@@ -1,8 +1,11 @@
+#include "mlir-c/Support.h"
+#include <cstdint>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/SourceMgr.h>
+#include <mlir/CAPI/Utils.h>
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
 #include <mlir/IR/AffineExpr.h>
 #include <mlir/IR/BuiltinAttributes.h>
@@ -23,6 +26,7 @@
 #include <memory>
 #include <numeric>
 #include <slap.h>
+#include <string>
 
 namespace {
 using namespace mlir;
@@ -255,16 +259,28 @@ slap_graph_t extractAffineAccess(Value memref, AffineMap map,
 
 slap_graph_t extractAffineAccess(affine::AffineLoadOp load,
                                  ExtractContext &ctx) {
-  return extractAffineAccess(load.getMemRef(), load.getAffineMap(),
-                             load->getOperands().drop_front(),
-                             load->getNextNode(), load.getContext(), ctx);
+  auto g = extractAffineAccess(load.getMemRef(), load.getAffineMap(),
+                               load->getOperands().drop_front(),
+                               load->getNextNode(), load.getContext(), ctx);
+  if (slap_dump_node_of_affine_access(ctx.getSLAPContext()))
+    load->setAttr(
+        "slap.node",
+        StringAttr::get(load.getContext(),
+                        std::to_string(reinterpret_cast<uint64_t>(g))));
+  return g;
 }
 
 slap_graph_t extractAffineAccess(affine::AffineStoreOp store,
                                  ExtractContext &ctx) {
-  return extractAffineAccess(store.getMemRef(), store.getAffineMap(),
-                             store.getOperands().drop_front(2),
-                             store->getNextNode(), store.getContext(), ctx);
+  auto g = extractAffineAccess(store.getMemRef(), store.getAffineMap(),
+                               store.getOperands().drop_front(2),
+                               store->getNextNode(), store.getContext(), ctx);
+  if (slap_dump_node_of_affine_access(ctx.getSLAPContext()))
+    store->setAttr(
+        "slap.node",
+        StringAttr::get(store.getContext(),
+                        std::to_string(reinterpret_cast<uint64_t>(g))));
+  return g;
 }
 
 slap_graph_t createEpilogue(affine::AffineForOp loop, ExtractContext &ctx,
@@ -333,6 +349,16 @@ slap_graph_t extractFromEntry(affine::AffineForOp entry, slap_context_t ctx,
   *vaddr_len = extract_ctx.getNumOfMemRefs();
   extract_ctx.foreach_memref(
       [vaddr](MemInfo info) { (*vaddr)[info.id] = info.virtual_address; });
+
+  if (slap_dump_node_of_affine_access(ctx)) {
+    detail::CallbackOstream stream(
+        [](MlirStringRef ref, void *ctx) {
+          slap_print_callback(ref.data, ref.length, ctx);
+        },
+        const_cast<void *>(reinterpret_cast<const void *>(ctx)));
+    entry.print(stream);
+    stream << "\n";
+  }
   return start;
 }
 } // namespace

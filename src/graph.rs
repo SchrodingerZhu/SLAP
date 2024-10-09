@@ -1,6 +1,7 @@
 use std::{cell::UnsafeCell, collections::HashSet, ptr::NonNull};
 
 use crate::{affine::Expr, Context};
+use serde_json::Value;
 
 #[derive(Clone)]
 pub enum Graph<'a> {
