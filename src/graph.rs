@@ -1,7 +1,8 @@
 use std::{cell::UnsafeCell, collections::HashSet, ptr::NonNull};
 
-use crate::{affine::Expr, Context};
-use serde_json::Value;
+use rustc_hash::FxHashMap;
+
+use crate::{affine::Expr, simulator::SimulationCtx, Context};
 
 #[derive(Clone)]
 pub enum Graph<'a> {
@@ -26,6 +27,54 @@ pub enum Graph<'a> {
 }
 
 impl<'a> Graph<'a> {
+    fn populate_adjacency(&self, result: &mut FxHashMap<usize, Box<[usize]>>) {
+        let token = self as *const _ as usize;
+        match result.entry(token) {
+            std::collections::hash_map::Entry::Occupied(_) => (),
+            std::collections::hash_map::Entry::Vacant(entry) => match *self {
+                Graph::Start(Some(next)) => {
+                    entry.insert(vec![next as *const _ as usize].into_boxed_slice());
+                    next.populate_adjacency(result);
+                }
+                Graph::Access {
+                    next: Some(next), ..
+                } => {
+                    entry.insert(vec![next as *const _ as usize].into_boxed_slice());
+                    next.populate_adjacency(result);
+                }
+                Graph::Update {
+                    next: Some(next), ..
+                } => {
+                    entry.insert(vec![next as *const _ as usize].into_boxed_slice());
+                    next.populate_adjacency(result);
+                }
+                Graph::Branch { then, r#else, .. } => {
+                    let mut vec = Vec::new();
+                    if let Some(then) = then {
+                        vec.push(then as *const _ as usize);
+                    }
+                    if let Some(r#else) = r#else {
+                        vec.push(r#else as *const _ as usize);
+                    }
+                    entry.insert(vec.into_boxed_slice());
+                    if let Some(then) = then {
+                        then.populate_adjacency(result);
+                    }
+                    if let Some(r#else) = r#else {
+                        r#else.populate_adjacency(result);
+                    }
+                }
+                _ => {
+                    entry.insert(Default::default());
+                }
+            },
+        }
+    }
+    pub fn adjacency(&self) -> FxHashMap<usize, Box<[usize]>> {
+        let mut result = FxHashMap::default();
+        self.populate_adjacency(&mut result);
+        result
+    }
     pub fn format(
         &self,
         writer: &mut std::fmt::Formatter<'_>,
@@ -83,6 +132,95 @@ impl<'a> Graph<'a> {
                 write!(writer, ")")
             }
         }
+    }
+    pub fn get_affine_dim(&self) -> usize {
+        match self {
+            Graph::Access { offset, .. } => offset.affine_dim(),
+            Graph::Update { expr, .. } => expr.affine_dim(),
+            Graph::Branch { bound, .. } => bound.affine_dim(),
+            Graph::Start(n) => n.map_or(0, |x| x.get_affine_dim()),
+            Graph::End => 0,
+        }
+    }
+    pub fn vectorize_all(&self, ctx: &SimulationCtx) -> FxHashMap<usize, Box<[isize]>> {
+        let mut result = FxHashMap::default();
+        self.vectorize_all_impl(ctx, &mut result, self.get_affine_dim());
+        result
+    }
+    fn vectorize_all_impl(
+        &self,
+        ctx: &SimulationCtx,
+        result: &mut FxHashMap<usize, Box<[isize]>>,
+        affine_dim: usize,
+    ) {
+        let token = self as *const _ as usize;
+        if result.contains_key(&token) {
+            return;
+        }
+        let vector = self.vectorize(ctx, affine_dim);
+        result.insert(token, vector);
+        match self {
+            Graph::Start(Some(next)) => next.vectorize_all_impl(ctx, result, affine_dim),
+            Graph::Access {
+                next: Some(next), ..
+            } => {
+                next.vectorize_all_impl(ctx, result, affine_dim);
+            }
+            Graph::Update {
+                next: Some(next), ..
+            } => {
+                next.vectorize_all_impl(ctx, result, affine_dim);
+            }
+            Graph::Branch { then, r#else, .. } => {
+                if let Some(then) = then {
+                    then.vectorize_all_impl(ctx, result, affine_dim);
+                }
+                if let Some(r#else) = r#else {
+                    r#else.vectorize_all_impl(ctx, result, affine_dim);
+                }
+            }
+            _ => (),
+        }
+    }
+    pub fn vectorize(&self, ctx: &SimulationCtx, affine_dim: usize) -> Box<[isize]> {
+        let distro = ctx.get_node_dist(self);
+        let max_interval = distro
+            .and_then(|x| x.values().max().copied().map(|x| x as isize))
+            .unwrap_or(-1);
+        let mut result = vec![];
+        let kind: isize = match self {
+            Graph::Start(_) => 0,
+            Graph::End => 1,
+            Graph::Access { .. } => 2,
+            Graph::Update { .. } => 3,
+            Graph::Branch { .. } => 4,
+        };
+        result.push(kind);
+        let ivar = match self {
+            Graph::Access { memref, .. } => *memref as isize,
+            Graph::Update { ivar, .. } => *ivar as isize,
+            Graph::Branch { ivar, .. } => *ivar as isize,
+            _ => -1,
+        };
+        result.push(ivar);
+        match self {
+            Graph::Access { offset, .. } => {
+                offset.vectorize_into(&mut result);
+            }
+            Graph::Update { expr, .. } => {
+                expr.vectorize_into(&mut result);
+            }
+            Graph::Branch { bound, .. } => {
+                bound.vectorize_into(&mut result);
+            }
+            _ => {
+                for _ in 0..affine_dim {
+                    result.push(-1);
+                }
+            }
+        }
+        result.push(max_interval);
+        result.into_boxed_slice()
     }
 }
 

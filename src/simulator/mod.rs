@@ -4,27 +4,14 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::graph::Graph;
 
-#[derive(Default)]
-pub struct NodeInfo {
-    logic_time: FxHashMap<usize, usize>,
-    reuse_interval: BTreeMap<usize, usize>,
-}
-
-impl std::fmt::Debug for NodeInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NodeInfo")
-            .field("reuse_interval", &self.reuse_interval)
-            .finish()
-    }
-}
-
 #[derive(Debug)]
 pub struct SimulationCtx<'a> {
-    pub(crate) block_size: usize,
-    pub(crate) vaddrs: &'a [usize],
-    pub(crate) logic_time: usize,
-    pub(crate) node_info: bumpalo::collections::Vec<'a, NodeInfo>,
+    block_size: usize,
+    vaddrs: &'a [usize],
+    logic_time: usize,
+    pub(crate) node_info: bumpalo::collections::Vec<'a, BTreeMap<usize, usize>>,
     pub(crate) address_map: FxHashMap<NonNull<Graph<'a>>, usize>,
+    access_time: FxHashMap<usize, usize>,
 }
 
 impl<'a> SimulationCtx<'a> {
@@ -32,11 +19,10 @@ impl<'a> SimulationCtx<'a> {
         let time = self.logic_time;
         self.logic_time += 1;
         let node_info = self.node_info.get_unchecked_mut(node_id);
-        let last_access = node_info.logic_time.entry(block_id).or_insert(time);
+        let last_access = self.access_time.entry(block_id).or_insert(time);
         if *last_access != time {
             let interval = time - *last_access;
             node_info
-                .reuse_interval
                 .entry(interval)
                 .and_modify(|e| *e += 1)
                 .or_insert(1);
@@ -50,6 +36,7 @@ impl<'a> SimulationCtx<'a> {
             logic_time: 0,
             node_info: bumpalo::collections::Vec::new_in(&ctx.arena),
             address_map: FxHashMap::default(),
+            access_time: FxHashMap::default(),
         }
     }
     fn populate_node_info_impl(
@@ -66,7 +53,7 @@ impl<'a> SimulationCtx<'a> {
                 let nonnull = NonNull::from(g);
                 self.address_map.entry(nonnull).or_insert_with(|| {
                     let res = self.node_info.len();
-                    self.node_info.push(NodeInfo::default());
+                    self.node_info.push(Default::default());
                     res
                 });
                 if let Some(x) = next {
@@ -88,6 +75,12 @@ impl<'a> SimulationCtx<'a> {
 
     pub fn populate_node_info(&mut self, g: &'a Graph<'a>) {
         self.populate_node_info_impl(g, &mut FxHashSet::default());
+    }
+
+    pub fn get_node_dist(&self, g: &Graph<'a>) -> Option<&BTreeMap<usize, usize>> {
+        self.address_map
+            .get(&NonNull::from(g))
+            .map(|x| &self.node_info[*x])
     }
 }
 

@@ -13,6 +13,13 @@ impl<'a> Expr<'a> {
         let coefficent = ctx.arena.alloc_slice_copy(coefficent);
         Self { coefficent, bias }
     }
+    pub fn vectorize_into(&self, target: &mut Vec<isize>) {
+        target.extend_from_slice(self.coefficent);
+        target.push(self.bias);
+    }
+    pub fn affine_dim(&self) -> usize {
+        self.coefficent.len() + 1
+    }
 }
 
 #[no_mangle]
