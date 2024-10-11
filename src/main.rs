@@ -50,7 +50,7 @@ unsafe extern "C" fn slap_print_callback(
     ctx: *mut std::ffi::c_void,
 ) {
     let ctx = &mut *(ctx as *mut Context);
-    let data = std::slice::from_raw_parts(data, len);
+    let data = std::slice::from_raw_parts(data as *const u8, len);
     (*ctx.printer.get()).write_all(data).unwrap();
 }
 
