@@ -35,7 +35,7 @@ enum Command {
         #[clap(short, long)]
         data: Option<PathBuf>,
         /// Print average RI instead of max RI
-        #[clap(short, long)]
+        #[clap(short = 'A', long)]
         average: bool,
     },
 }

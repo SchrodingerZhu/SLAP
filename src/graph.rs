@@ -146,7 +146,7 @@ impl<'a> Graph<'a> {
         &self,
         ctx: &SimulationCtx,
         average: bool,
-    ) -> FxHashMap<usize, Box<[isize]>> {
+    ) -> FxHashMap<usize, Box<[f64]>> {
         let mut result = FxHashMap::default();
         self.vectorize_all_impl(ctx, &mut result, self.get_affine_dim(), average);
         result
@@ -154,7 +154,7 @@ impl<'a> Graph<'a> {
     fn vectorize_all_impl(
         &self,
         ctx: &SimulationCtx,
-        result: &mut FxHashMap<usize, Box<[isize]>>,
+        result: &mut FxHashMap<usize, Box<[f64]>>,
         affine_dim: usize,
         average: bool,
     ) {
@@ -187,37 +187,41 @@ impl<'a> Graph<'a> {
             _ => (),
         }
     }
-    pub fn vectorize(&self, ctx: &SimulationCtx, affine_dim: usize, average: bool) -> Box<[isize]> {
+    pub fn vectorize(&self, ctx: &SimulationCtx, affine_dim: usize, average: bool) -> Box<[f64]> {
         let distro = ctx.get_node_dist(self);
         let target_value = if average {
             distro
-                .and_then(|x| {
-                    x.values()
-                        .copied()
-                        .sum::<usize>()
-                        .checked_div(x.len())
-                        .map(|x| x as isize)
+                .and_then(|distro| {
+                    let mut total_sum = 0usize;
+                    let mut total_freq = 0usize;
+                    for (x, y) in distro.iter() {
+                        total_sum += x * y;
+                        total_freq += y;
+                    }
+                    total_sum.checked_div(total_freq)
                 })
-                .unwrap_or(-1)
+                .map(|x| x as f64)
+                .unwrap_or(-1.0)
         } else {
             distro
-                .and_then(|x| x.values().max().copied().map(|x| x as isize))
-                .unwrap_or(-1)
+                .and_then(|x| x.iter().max_by_key(|x| x.1))
+                .map(|x| *x.0 as f64)
+                .unwrap_or(-1.0)
         };
         let mut result = vec![];
-        let kind: isize = match self {
-            Graph::Start(_) => 0,
-            Graph::End => 1,
-            Graph::Access { .. } => 2,
-            Graph::Update { .. } => 3,
-            Graph::Branch { .. } => 4,
+        let kind: f64 = match self {
+            Graph::Start(_) => 0.0,
+            Graph::End => 1.0,
+            Graph::Access { .. } => 2.0,
+            Graph::Update { .. } => 3.0,
+            Graph::Branch { .. } => 4.0,
         };
         result.push(kind);
         let ivar = match self {
-            Graph::Access { memref, .. } => *memref as isize,
-            Graph::Update { ivar, .. } => *ivar as isize,
-            Graph::Branch { ivar, .. } => *ivar as isize,
-            _ => -1,
+            Graph::Access { memref, .. } => *memref as f64,
+            Graph::Update { ivar, .. } => *ivar as f64,
+            Graph::Branch { ivar, .. } => *ivar as f64,
+            _ => -1.0,
         };
         result.push(ivar);
         match self {
@@ -232,7 +236,7 @@ impl<'a> Graph<'a> {
             }
             _ => {
                 for _ in 0..affine_dim {
-                    result.push(-1);
+                    result.push(-1.0);
                 }
             }
         }
