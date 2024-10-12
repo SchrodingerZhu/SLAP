@@ -191,16 +191,15 @@ impl<'a> Graph<'a> {
         let distro = ctx.get_node_dist(self);
         let target_value = if average {
             distro
-                .and_then(|distro| {
+                .map(|distro| {
                     let mut total_sum = 0usize;
                     let mut total_freq = 0usize;
                     for (x, y) in distro.iter() {
                         total_sum += x * y;
                         total_freq += y;
                     }
-                    total_sum.checked_div(total_freq)
+                    (total_sum as f64) / (total_freq as f64)
                 })
-                .map(|x| x as f64)
                 .unwrap_or(-1.0)
         } else {
             distro
