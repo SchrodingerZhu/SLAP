@@ -142,9 +142,13 @@ impl<'a> Graph<'a> {
             Graph::End => 0,
         }
     }
-    pub fn vectorize_all(&self, ctx: &SimulationCtx) -> FxHashMap<usize, Box<[isize]>> {
+    pub fn vectorize_all(
+        &self,
+        ctx: &SimulationCtx,
+        average: bool,
+    ) -> FxHashMap<usize, Box<[isize]>> {
         let mut result = FxHashMap::default();
-        self.vectorize_all_impl(ctx, &mut result, self.get_affine_dim());
+        self.vectorize_all_impl(ctx, &mut result, self.get_affine_dim(), average);
         result
     }
     fn vectorize_all_impl(
@@ -152,41 +156,54 @@ impl<'a> Graph<'a> {
         ctx: &SimulationCtx,
         result: &mut FxHashMap<usize, Box<[isize]>>,
         affine_dim: usize,
+        average: bool,
     ) {
         let token = self as *const _ as usize;
         if result.contains_key(&token) {
             return;
         }
-        let vector = self.vectorize(ctx, affine_dim);
+        let vector = self.vectorize(ctx, affine_dim, average);
         result.insert(token, vector);
         match self {
-            Graph::Start(Some(next)) => next.vectorize_all_impl(ctx, result, affine_dim),
+            Graph::Start(Some(next)) => next.vectorize_all_impl(ctx, result, affine_dim, average),
             Graph::Access {
                 next: Some(next), ..
             } => {
-                next.vectorize_all_impl(ctx, result, affine_dim);
+                next.vectorize_all_impl(ctx, result, affine_dim, average);
             }
             Graph::Update {
                 next: Some(next), ..
             } => {
-                next.vectorize_all_impl(ctx, result, affine_dim);
+                next.vectorize_all_impl(ctx, result, affine_dim, average);
             }
             Graph::Branch { then, r#else, .. } => {
                 if let Some(then) = then {
-                    then.vectorize_all_impl(ctx, result, affine_dim);
+                    then.vectorize_all_impl(ctx, result, affine_dim, average);
                 }
                 if let Some(r#else) = r#else {
-                    r#else.vectorize_all_impl(ctx, result, affine_dim);
+                    r#else.vectorize_all_impl(ctx, result, affine_dim, average);
                 }
             }
             _ => (),
         }
     }
-    pub fn vectorize(&self, ctx: &SimulationCtx, affine_dim: usize) -> Box<[isize]> {
+    pub fn vectorize(&self, ctx: &SimulationCtx, affine_dim: usize, average: bool) -> Box<[isize]> {
         let distro = ctx.get_node_dist(self);
-        let max_interval = distro
-            .and_then(|x| x.values().max().copied().map(|x| x as isize))
-            .unwrap_or(-1);
+        let target_value = if average {
+            distro
+                .and_then(|x| {
+                    x.values()
+                        .copied()
+                        .sum::<usize>()
+                        .checked_div(x.len())
+                        .map(|x| x as isize)
+                })
+                .unwrap_or(-1)
+        } else {
+            distro
+                .and_then(|x| x.values().max().copied().map(|x| x as isize))
+                .unwrap_or(-1)
+        };
         let mut result = vec![];
         let kind: isize = match self {
             Graph::Start(_) => 0,
@@ -219,7 +236,7 @@ impl<'a> Graph<'a> {
                 }
             }
         }
-        result.push(max_interval);
+        result.push(target_value);
         result.into_boxed_slice()
     }
 }

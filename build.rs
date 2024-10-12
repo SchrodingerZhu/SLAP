@@ -12,7 +12,7 @@ fn main() {
             Err(std::env::VarError::NotPresent)
         })
         .unwrap();
-    let dst = cmake::Config::new(".")
+    let dst = cmake::Config::new("cxx")
         .define("MLIR_DIR", &mlir_path)
         .build();
     println!(

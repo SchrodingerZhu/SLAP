@@ -34,6 +34,9 @@ enum Command {
         /// Path to the node data output file, if not provided, the result will be printed to stdout
         #[clap(short, long)]
         data: Option<PathBuf>,
+        /// Print average RI instead of max RI
+        #[clap(short, long)]
+        average: bool,
     },
 }
 
@@ -50,7 +53,7 @@ unsafe extern "C" fn slap_print_callback(
     ctx: *mut std::ffi::c_void,
 ) {
     let ctx = &mut *(ctx as *mut Context);
-    let data = std::slice::from_raw_parts(data as *const u8, len);
+    let data = std::slice::from_raw_parts(data, len);
     (*ctx.printer.get()).write_all(data).unwrap();
 }
 
@@ -106,6 +109,7 @@ fn main() {
             input,
             adjacency,
             data,
+            average,
         } => {
             let ctx = Context {
                 arena: bumpalo::Bump::new(),
@@ -128,7 +132,7 @@ fn main() {
                 sctx.populate_node_info(g);
                 let cell = std::cell::UnsafeCell::new(sctx);
                 simulator::slap_run_simulation(&cell, g);
-                let vectorized = g.vectorize_all(&*cell.get());
+                let vectorized = g.vectorize_all(&*cell.get(), average);
                 let json = serde_json::to_string_pretty(&vectorized).unwrap();
                 data_writer.write_all(json.as_bytes()).unwrap();
             }
