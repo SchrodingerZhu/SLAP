@@ -47,11 +47,7 @@ unsafe extern "C" fn slap_dump_node_of_affine_access(ctx: *const Context) -> boo
 
 // void slap_print_callback(const char *, size_t, void *);
 #[no_mangle]
-unsafe extern "C" fn slap_print_callback(
-    data: *const std::os::raw::c_char,
-    len: usize,
-    ctx: *mut std::ffi::c_void,
-) {
+unsafe extern "C" fn slap_print_callback(data: *const u8, len: usize, ctx: *mut std::ffi::c_void) {
     let ctx = &mut *(ctx as *mut Context);
     let data = std::slice::from_raw_parts(data, len);
     (*ctx.printer.get()).write_all(data).unwrap();
