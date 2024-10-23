@@ -1,6 +1,4 @@
 import argparse
-import tempfile
-import subprocess
 import asyncio
 import aiofiles
 
@@ -52,8 +50,13 @@ async def single_task(args, src, M, K, N, SI, SJ, SK):
     async with aiofiles.tempfile.NamedTemporaryFile("w") as f:
         await f.write(src)
         await f.flush()
-        proc = await asyncio.subprocess.create_subprocess_exec(args.generator, "vectorize", "-i", f.name, "-a", 
-            f"{args.output_dir}/matmul_{M}_{K}_{N}_{SI}_{SJ}_{SK}.adj.json", "-d", f"{args.output_dir}/matmul_{M}_{K}_{N}_{SI}_{SJ}_{SK}.data.json")
+        proc_args = [
+            args.generator, "vectorize", "-c", "-i", f.name, "-a", 
+            f"{args.output_dir}/matmul_{M}_{K}_{N}_{SI}_{SJ}_{SK}.adj.json", "-d", f"{args.output_dir}/matmul_{M}_{K}_{N}_{SI}_{SJ}_{SK}.data.json"
+        ]
+        if args.average:
+            proc_args.append("-A")
+        proc = await asyncio.subprocess.create_subprocess_exec(*proc_args)
         await proc.wait()
 
 async def gen_all(args):
@@ -96,6 +99,7 @@ def main():
     parser.add_argument('--output-dir', type=str, default="/tmp")
     parser.add_argument('--generator', type=str, default="target/release/slap")
     parser.add_argument('--batch-size', type=int, default=128)
+    parser.add_argument('--average', action='store_true')
     args = parser.parse_args()
     asyncio.run(gen_all(args))
 

@@ -37,6 +37,9 @@ enum Command {
         /// Print average RI instead of max RI
         #[clap(short = 'A', long)]
         average: bool,
+        /// Use compact json format
+        #[clap(short, long)]
+        compact: bool,
     },
 }
 
@@ -106,6 +109,7 @@ fn main() {
             adjacency,
             data,
             average,
+            compact,
         } => {
             let ctx = Context {
                 arena: bumpalo::Bump::new(),
@@ -115,12 +119,15 @@ fn main() {
             let (g, vaddrs) = graph::Graph::new_from_file(&ctx, &format!("{}", input.display()))
                 .expect("failed to parse mlir");
             let adj = g.adjacency();
-            let mut adj_writer = adjacency
+            let adj_writer = adjacency
                 .map(|x| Box::new(std::fs::File::create(x).unwrap()) as Box<dyn std::io::Write>)
                 .unwrap_or_else(|| Box::new(std::io::stdout()));
-            let adj_json = serde_json::to_string_pretty(&adj).unwrap();
-            adj_writer.write_all(adj_json.as_bytes()).unwrap();
-            let mut data_writer = data
+            if compact {
+                serde_json::to_writer(adj_writer, &adj).unwrap();
+            } else {
+                serde_json::to_writer_pretty(adj_writer, &adj).unwrap();
+            }
+            let data_writer = data
                 .map(|x| Box::new(std::fs::File::create(x).unwrap()) as Box<dyn std::io::Write>)
                 .unwrap_or_else(|| Box::new(std::io::stdout()));
             unsafe {
@@ -129,8 +136,11 @@ fn main() {
                 let cell = std::cell::UnsafeCell::new(sctx);
                 simulator::slap_run_simulation(&cell, g);
                 let vectorized = g.vectorize_all(&*cell.get(), average);
-                let json = serde_json::to_string_pretty(&vectorized).unwrap();
-                data_writer.write_all(json.as_bytes()).unwrap();
+                if compact {
+                    serde_json::to_writer(data_writer, &vectorized).unwrap();
+                } else {
+                    serde_json::to_writer_pretty(data_writer, &vectorized).unwrap();
+                }
             }
         }
     }
