@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, collections::BTreeMap, ptr::NonNull};
+use std::{cell::UnsafeCell, collections::BTreeMap, collections::LinkedList, ptr::NonNull};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -8,35 +8,54 @@ use crate::graph::Graph;
 pub struct SimulationCtx<'a> {
     block_size: usize,
     vaddrs: &'a [usize],
-    logic_time: usize,
     pub(crate) node_info: bumpalo::collections::Vec<'a, BTreeMap<usize, usize>>,
     pub(crate) address_map: FxHashMap<NonNull<Graph<'a>>, usize>,
-    access_time: FxHashMap<usize, usize>,
+    cache_size: usize,
+    cache_stack:  LinkedList<usize>,
 }
 
 impl<'a> SimulationCtx<'a> {
     unsafe fn access(&mut self, node_id: usize, block_id: usize) {
-        let time = self.logic_time;
-        self.logic_time += 1;
+        let mut found = false;
+        for (index, &value) in self.cache_stack.iter().enumerate() {
+            if value == block_id {
+                found = true;
+                let mut split = self.cache_stack.split_off(index);
+                split.pop_front();
+                self.cache_stack.extend(split);
+                break;
+            }
+        }
+        
+        if self.cache_stack.len() == self.cache_size {
+            self.cache_stack.pop_back();
+        }
+        self.cache_stack.push_back(block_id);
+        
         let node_info = self.node_info.get_unchecked_mut(node_id);
-        let last_access = self.access_time.entry(block_id).or_insert(time);
-        if *last_access != time {
-            let interval = time - *last_access;
+        if found {
             node_info
-                .entry(interval)
+                .entry(1)
                 .and_modify(|e| *e += 1)
                 .or_insert(1);
-            *last_access = time;
         }
+        else {
+            node_info
+                .entry(0)
+                .and_modify(|e| *e += 1)
+                .or_insert(1);
+        }
+        
+        
     }
-    pub fn new(ctx: &'a crate::Context, block_size: usize, vaddrs: &'a [usize]) -> Self {
+    pub fn new(ctx: &'a crate::Context, block_size: usize, cache_size:usize, vaddrs: &'a [usize]) -> Self {
         Self {
             block_size,
             vaddrs,
-            logic_time: 0,
             node_info: bumpalo::collections::Vec::new_in(&ctx.arena),
             address_map: FxHashMap::default(),
-            access_time: FxHashMap::default(),
+            cache_size,
+            cache_stack: LinkedList::default(),
         }
     }
     fn populate_node_info_impl(

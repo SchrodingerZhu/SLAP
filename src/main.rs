@@ -77,7 +77,7 @@ fn main() {
             let (g, vaddrs) = graph::Graph::new_from_file(&ctx, &format!("{}", input.display()))
                 .expect("failed to parse mlir");
             unsafe {
-                let mut sctx = simulator::SimulationCtx::new(&ctx, 64, vaddrs);
+                let mut sctx = simulator::SimulationCtx::new(&ctx, 64, 1024, vaddrs);
                 sctx.populate_node_info(g);
                 let cell = std::cell::UnsafeCell::new(sctx);
                 simulator::slap_run_simulation(&cell, g);
@@ -131,7 +131,7 @@ fn main() {
                 .map(|x| Box::new(std::fs::File::create(x).unwrap()) as Box<dyn std::io::Write>)
                 .unwrap_or_else(|| Box::new(std::io::stdout()));
             unsafe {
-                let mut sctx = simulator::SimulationCtx::new(&ctx, 64, vaddrs);
+                let mut sctx = simulator::SimulationCtx::new(&ctx, 64, 1024, vaddrs);
                 sctx.populate_node_info(g);
                 let cell = std::cell::UnsafeCell::new(sctx);
                 simulator::slap_run_simulation(&cell, g);
