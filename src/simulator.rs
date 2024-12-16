@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, collections::BTreeMap, collections::LinkedList, ptr::NonNull};
+use std::{cell::UnsafeCell, collections::BTreeMap, ptr::NonNull};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -8,54 +8,59 @@ use crate::graph::Graph;
 pub struct SimulationCtx<'a> {
     block_size: usize,
     vaddrs: &'a [usize],
-    pub(crate) node_info: bumpalo::collections::Vec<'a, BTreeMap<usize, usize>>,
+    pub(crate) node_info: bumpalo::collections::Vec<'a, usize>,
     pub(crate) address_map: FxHashMap<NonNull<Graph<'a>>, usize>,
     cache_size: usize,
-    cache_stack:  LinkedList<usize>,
+    logic_time: usize,
+    cache: FxHashMap<usize, usize>,
+    access_time_to_address: BTreeMap<usize, usize>,
 }
 
 impl<'a> SimulationCtx<'a> {
     unsafe fn access(&mut self, node_id: usize, block_id: usize) {
-        let mut found = false;
-        for (index, &value) in self.cache_stack.iter().enumerate() {
-            if value == block_id {
-                found = true;
-                let mut split = self.cache_stack.split_off(index);
-                split.pop_front();
-                self.cache_stack.extend(split);
-                break;
+        self.logic_time += 1;
+        let pre_insert_len = self.cache.len();
+        let to_evict = match self.cache.entry(block_id) {
+            std::collections::hash_map::Entry::Occupied(mut occupied) => {
+                let old_time = occupied.insert(self.logic_time);
+                self.access_time_to_address
+                    .remove(&old_time)
+                    .expect("block not found in access_time_to_address");
+                self.access_time_to_address
+                    .insert(self.logic_time, block_id);
+                None
             }
+            std::collections::hash_map::Entry::Vacant(vacant) => {
+                vacant.insert(self.logic_time);
+                self.access_time_to_address
+                    .insert(self.logic_time, block_id);
+                *self.node_info.get_unchecked_mut(node_id) += 1;
+                if pre_insert_len == self.cache_size {
+                    self.access_time_to_address.pop_first().map(|x| x.1)
+                } else {
+                    None
+                }
+            }
+        };
+        if let Some(block_id) = to_evict {
+            self.cache.remove(&block_id);
         }
-        
-        if self.cache_stack.len() == self.cache_size {
-            self.cache_stack.pop_back();
-        }
-        self.cache_stack.push_back(block_id);
-        
-        let node_info = self.node_info.get_unchecked_mut(node_id);
-        if found {
-            node_info
-                .entry(1)
-                .and_modify(|e| *e += 1)
-                .or_insert(1);
-        }
-        else {
-            node_info
-                .entry(0)
-                .and_modify(|e| *e += 1)
-                .or_insert(1);
-        }
-        
-        
     }
-    pub fn new(ctx: &'a crate::Context, block_size: usize, cache_size:usize, vaddrs: &'a [usize]) -> Self {
+    pub fn new(
+        ctx: &'a crate::Context,
+        block_size: usize,
+        cache_size: usize,
+        vaddrs: &'a [usize],
+    ) -> Self {
         Self {
             block_size,
             vaddrs,
             node_info: bumpalo::collections::Vec::new_in(&ctx.arena),
             address_map: FxHashMap::default(),
             cache_size,
-            cache_stack: LinkedList::default(),
+            logic_time: 0,
+            cache: FxHashMap::default(),
+            access_time_to_address: BTreeMap::new(),
         }
     }
     fn populate_node_info_impl(
@@ -94,12 +99,6 @@ impl<'a> SimulationCtx<'a> {
 
     pub fn populate_node_info(&mut self, g: &'a Graph<'a>) {
         self.populate_node_info_impl(g, &mut FxHashSet::default());
-    }
-
-    pub fn get_node_dist(&self, g: &Graph<'a>) -> Option<&BTreeMap<usize, usize>> {
-        self.address_map
-            .get(&NonNull::from(g))
-            .map(|x| &self.node_info[*x])
     }
 }
 
