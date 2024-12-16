@@ -1,8 +1,10 @@
 use std::{cell::UnsafeCell, path::PathBuf};
 
+use burn_dataset::SqliteDatasetWriter;
 use clap::Parser;
 
 mod affine;
+mod dataset;
 mod graph;
 mod simulator;
 
@@ -27,6 +29,25 @@ enum Command {
         /// Path to the output file, if not provided, the result will be printed to stdout
         output: Option<PathBuf>,
     },
+    /// Generate Training Dataset
+    Dataset {
+        #[clap(short, long)]
+        /// Path to the affine program
+        input: PathBuf,
+        #[clap(short, long)]
+        /// Path to the output file
+        output: PathBuf,
+        // Simulation parameters
+        #[clap(short, long)]
+        config: PathBuf,
+    },
+}
+
+#[derive(serde::Deserialize)]
+struct SimilationConfig {
+    replacements: Vec<dataset::Replacement>,
+    block_size: usize,
+    cache_sizes: Vec<usize>,
 }
 
 #[no_mangle]
@@ -42,11 +63,16 @@ unsafe extern "C" fn slap_print_callback(data: *const u8, len: usize, ctx: *mut 
     (*ctx.printer.get()).write_all(data).unwrap();
 }
 
+fn init() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| unsafe {
+        simulator::slap_initialize_llvm();
+    });
+}
+
 fn main() {
     let cmd = Command::parse();
-    unsafe {
-        simulator::slap_initialize_llvm();
-    }
+    init();
     match cmd {
         Command::MissCount {
             input,
@@ -83,6 +109,23 @@ fn main() {
                     .unwrap();
                 }
             }
+        }
+        Command::Dataset {
+            input,
+            output,
+            config,
+        } => {
+            let config: SimilationConfig =
+                serde_json::from_reader(std::fs::File::open(config).unwrap()).unwrap();
+            let input = std::fs::read_to_string(input).unwrap();
+            let mut writer = SqliteDatasetWriter::new(output, true).unwrap();
+            dataset::generate_dataset(
+                &input,
+                &config.replacements,
+                config.block_size,
+                &config.cache_sizes,
+                &mut writer,
+            );
         }
     }
 }
