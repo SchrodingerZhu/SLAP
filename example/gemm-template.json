@@ -1,0 +1,34 @@
+{
+  "replacements": [
+    {
+      "pattern": "\\[\\:M\\:\\]",
+      "lower_bound": 10,
+      "upper_bound": 200,
+      "step": 10
+    },
+    {
+      "pattern": "\\[\\:N\\:\\]",
+      "lower_bound": 10,
+      "upper_bound": 200,
+      "step": 10
+    },
+    {
+      "pattern": "\\[\\:K\\:\\]",
+      "lower_bound": 10,
+      "upper_bound": 200,
+      "step": 10
+    }
+  ],
+  "cache_sizes": [
+    64,
+    128,
+    256,
+    512,
+    1024,
+    2048,
+    4096,
+    8192,
+    16384
+  ],
+  "block_size": 64
+}
