@@ -1,8 +1,8 @@
-use std::{cell::UnsafeCell, io::Write, str::FromStr, sync::Mutex};
+use std::{cell::UnsafeCell, io::Write, str::FromStr};
 
 use burn_dataset::SqliteDatasetWriter;
 use rand::prelude::Distribution;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::ParallelIterator;
 use regex_automata::meta::Regex;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
