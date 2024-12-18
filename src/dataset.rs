@@ -1,6 +1,7 @@
 use std::{cell::UnsafeCell, io::Write, str::FromStr};
 
 use burn_dataset::SqliteDatasetWriter;
+use indicatif::ParallelProgressIterator;
 use rand::prelude::Distribution;
 use rayon::iter::ParallelIterator;
 use regex_automata::meta::Regex;
@@ -113,7 +114,17 @@ fn simulate_code(input: &str, block_size: usize, cache_size: usize) -> Box<[f32]
         (*cell.get())
             .node_info
             .iter()
-            .map(|x| *x as f32)
+            .map(|x| {
+                let (acc, cnt) = x
+                    .iter()
+                    .map(|(a, b)| (*a, *b))
+                    .fold((0, 0), |(acc, cnt), (c, d)| (acc + c * d, cnt + d));
+                if cnt == 0 {
+                    0.0
+                } else {
+                    acc as f32 / cnt as f32
+                }
+            })
             .collect::<Vec<_>>()
             .into_boxed_slice()
     }
@@ -148,7 +159,7 @@ fn generate_all_code<'a>(
 ) -> impl ParallelIterator<Item = (String, Vec<usize>)> + use<'a> {
     use rayon::prelude::*;
     let replacements = generate_all_possible_replacements(replacements);
-    replacements.into_par_iter().map(|r| {
+    replacements.into_par_iter().progress().map(|r| {
         let values = r.iter().map(|(_, val)| *val).collect::<Vec<_>>();
         let replaced = replace(template, &r);
         (replaced, values)
@@ -159,21 +170,18 @@ pub fn generate_dataset(
     template: &str,
     replacements: &[Replacement],
     block_size: usize,
-    cache_sizes: &[usize],
+    cache_size: usize,
     writer: &mut SqliteDatasetWriter<NetItem>,
 ) {
     use rayon::prelude::*;
     generate_all_code(template, replacements)
-        .flat_map(|(replaced, values)| {
-            cache_sizes.par_iter().map(move |&cache_size| {
-                let mut values = values.iter().map(|x| *x as f32).collect::<Vec<_>>();
-                values.push(cache_size as f32);
-                let result = simulate_code(&replaced, block_size, cache_size);
-                NetItem {
-                    data: values.into_boxed_slice(),
-                    target: result,
-                }
-            })
+        .map(|(replaced, values)| {
+            let values = values.iter().map(|x| *x as f32).collect::<Vec<_>>();
+            let result = simulate_code(&replaced, block_size, cache_size);
+            NetItem {
+                data: values.into_boxed_slice(),
+                target: result,
+            }
         })
         .for_each(|item| {
             let mut rng = rand::thread_rng();
@@ -295,6 +303,6 @@ mod tests {
         ];
         const TEMPLATE: &str = include_str!("../example/gemm-template.mlir");
         let mut writer = SqliteDatasetWriter::new("/tmp/test.db", true).unwrap();
-        generate_dataset(TEMPLATE, &replacements, 64, &[64, 128, 256], &mut writer);
+        generate_dataset(TEMPLATE, &replacements, 64, 64, &mut writer);
     }
 }

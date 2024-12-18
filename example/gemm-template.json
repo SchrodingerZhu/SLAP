@@ -2,33 +2,23 @@
   "replacements": [
     {
       "pattern": "\\[\\:M\\:\\]",
-      "lower_bound": 10,
-      "upper_bound": 200,
-      "step": 10
+      "lower_bound": 1,
+      "upper_bound": 201,
+      "step": 1
     },
     {
       "pattern": "\\[\\:N\\:\\]",
-      "lower_bound": 10,
-      "upper_bound": 200,
-      "step": 10
+      "lower_bound": 1,
+      "upper_bound": 201,
+      "step": 1
     },
     {
       "pattern": "\\[\\:K\\:\\]",
-      "lower_bound": 10,
-      "upper_bound": 200,
-      "step": 10
+      "lower_bound": 1,
+      "upper_bound": 201,
+      "step": 1
     }
   ],
-  "cache_sizes": [
-    64,
-    128,
-    256,
-    512,
-    1024,
-    2048,
-    4096,
-    8192,
-    16384
-  ],
+  "cache_size": 2048,
   "block_size": 64
 }

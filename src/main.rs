@@ -17,7 +17,7 @@ pub struct Context {
 #[derive(clap::Parser)]
 enum Command {
     /// Generate Miss Count Distribution
-    MissCount {
+    AverageRI {
         #[clap(short, long)]
         /// Path to the affine program
         input: PathBuf,
@@ -47,7 +47,7 @@ enum Command {
 struct SimilationConfig {
     replacements: Vec<dataset::Replacement>,
     block_size: usize,
-    cache_sizes: Vec<usize>,
+    cache_size: usize,
 }
 
 #[no_mangle]
@@ -74,7 +74,7 @@ fn main() {
     let cmd = Command::parse();
     init();
     match cmd {
-        Command::MissCount {
+        Command::AverageRI {
             input,
             output,
             cache_size,
@@ -99,12 +99,17 @@ fn main() {
                 let cell = std::cell::UnsafeCell::new(sctx);
                 simulator::slap_run_simulation(&cell, g);
                 for (k, v) in (*cell.get()).address_map.iter() {
+                    let (acc, cnt) = (*cell.get()).node_info[*v]
+                        .iter()
+                        .map(|(a, b)| (*a, *b))
+                        .fold((0, 0), |(acc, cnt), (c, d)| (acc + c * d, cnt + d));
+                    let avg = acc as f64 / cnt as f64;
                     writeln!(
                         &mut *ctx.printer.get(),
-                        "id: {}, node: {}, miss: {}",
+                        "id: {}, node: {}, average ri: {}",
                         v,
                         k.as_ptr() as usize,
-                        (*cell.get()).node_info[*v]
+                        avg
                     )
                     .unwrap();
                 }
@@ -123,7 +128,7 @@ fn main() {
                 &input,
                 &config.replacements,
                 config.block_size,
-                &config.cache_sizes,
+                config.cache_size,
                 &mut writer,
             );
         }

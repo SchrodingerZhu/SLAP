@@ -8,43 +8,28 @@ use crate::graph::Graph;
 pub struct SimulationCtx<'a> {
     block_size: usize,
     vaddrs: &'a [usize],
-    pub(crate) node_info: bumpalo::collections::Vec<'a, usize>,
+    pub(crate) node_info: bumpalo::collections::Vec<'a, FxHashMap<usize, usize>>,
     pub(crate) address_map: FxHashMap<NonNull<Graph<'a>>, usize>,
     cache_size: usize,
     logic_time: usize,
-    cache: FxHashMap<usize, usize>,
-    access_time_to_address: BTreeMap<usize, usize>,
+    last_access: FxHashMap<usize, usize>,
 }
 
 impl<'a> SimulationCtx<'a> {
     unsafe fn access(&mut self, node_id: usize, block_id: usize) {
-        self.logic_time += 1;
-        let pre_insert_len = self.cache.len();
-        let to_evict = match self.cache.entry(block_id) {
+        let node_info = &mut self.node_info[node_id];
+        match self.last_access.entry(block_id) {
             std::collections::hash_map::Entry::Occupied(mut occupied) => {
-                let old_time = occupied.insert(self.logic_time);
-                self.access_time_to_address
-                    .remove(&old_time)
-                    .expect("block not found in access_time_to_address");
-                self.access_time_to_address
-                    .insert(self.logic_time, block_id);
-                None
+                let last_access = *occupied.get();
+                let interval = self.logic_time - last_access;
+                *node_info.entry(interval).or_insert(0) += 1;
+                occupied.insert(self.logic_time);
             }
             std::collections::hash_map::Entry::Vacant(vacant) => {
                 vacant.insert(self.logic_time);
-                self.access_time_to_address
-                    .insert(self.logic_time, block_id);
-                *self.node_info.get_unchecked_mut(node_id) += 1;
-                if pre_insert_len == self.cache_size {
-                    self.access_time_to_address.pop_first().map(|x| x.1)
-                } else {
-                    None
-                }
             }
-        };
-        if let Some(block_id) = to_evict {
-            self.cache.remove(&block_id);
         }
+        self.logic_time += 1;
     }
     pub fn new(
         ctx: &'a crate::Context,
@@ -59,8 +44,7 @@ impl<'a> SimulationCtx<'a> {
             address_map: FxHashMap::default(),
             cache_size,
             logic_time: 0,
-            cache: FxHashMap::default(),
-            access_time_to_address: BTreeMap::new(),
+            last_access: FxHashMap::default(),
         }
     }
     fn populate_node_info_impl(
