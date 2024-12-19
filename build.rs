@@ -32,6 +32,10 @@ fn main() {
     println!("cargo:rustc-link-lib=dylib=LLVM");
     println!("cargo:rustc-link-lib=dylib=stdc++");
     println!("cargo::rustc-link-arg=-Wl,-rpath,{}", libdir.display());
+    println!(
+        "cargo::rustc-link-arg=-Wl,-rpath,{}",
+        PathBuf::from_str(&mlir_path).unwrap().join("lib").display()
+    );
 
     // find all libMLIRCAPI* in libdir
     for entry in std::fs::read_dir(libdir).unwrap() {
