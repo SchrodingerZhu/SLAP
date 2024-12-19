@@ -82,7 +82,7 @@ public:
       auto total_size = std::accumulate(shape.begin(), shape.end(), 1,
                                         std::multiplies<int64_t>());
       auto total_bytes = total_size * mem.getElementTypeBitWidth() / 8;
-      assigned_address += total_bytes;
+      assigned_address += total_bytes + slap_get_block_size(slap_ctx);
     }
     return res.first->second;
   }

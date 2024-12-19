@@ -14,6 +14,7 @@ typedef struct slap_context const *slap_context_t;
 typedef struct slap_sim_context *slap_sim_context_t;
 
 bool slap_dump_node_of_affine_access(slap_context_t);
+size_t slap_get_block_size(slap_context_t);
 void slap_print_callback(const char *, size_t, void *);
 
 slap_expr_t slap_expr_new(slap_context_t, ssize_t *coeffs, size_t n,

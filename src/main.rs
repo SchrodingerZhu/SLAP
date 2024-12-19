@@ -10,6 +10,7 @@ pub struct Context {
     arena: bumpalo::Bump,
     dump_node: bool,
     printer: UnsafeCell<Box<dyn std::io::Write>>,
+    block_size: usize,
 }
 
 #[derive(clap::Parser)]
@@ -22,6 +23,9 @@ enum Command {
         #[clap(short, long)]
         /// Path to the output file, if not provided, the result will be printed to stdout
         output: Option<PathBuf>,
+        /// Block size
+        #[clap(short, long, default_value = "64")]
+        block_size: usize,
     },
     /// Vectorize the given affine program into training data
     Vectorize {
@@ -40,7 +44,15 @@ enum Command {
         /// Use compact json format
         #[clap(short, long)]
         compact: bool,
+        /// Block size
+        #[clap(short, long, default_value = "64")]
+        block_size: usize,
     },
+}
+
+#[no_mangle]
+unsafe extern "C" fn slap_get_block_size(ctx: *const Context) -> usize {
+    (*ctx).block_size
 }
 
 #[no_mangle]
@@ -62,7 +74,11 @@ fn main() {
         simulator::slap_initialize_llvm();
     }
     match cmd {
-        Command::Distribution { input, output } => {
+        Command::Distribution {
+            input,
+            output,
+            block_size,
+        } => {
             let ctx = Context {
                 arena: bumpalo::Bump::new(),
                 dump_node: true,
@@ -73,11 +89,12 @@ fn main() {
                         })
                         .unwrap_or_else(|| Box::new(std::io::stdout())),
                 ),
+                block_size,
             };
             let (g, vaddrs) = graph::Graph::new_from_file(&ctx, &format!("{}", input.display()))
                 .expect("failed to parse mlir");
             unsafe {
-                let mut sctx = simulator::SimulationCtx::new(&ctx, 64, vaddrs);
+                let mut sctx = simulator::SimulationCtx::new(&ctx, block_size, vaddrs);
                 sctx.populate_node_info(g);
                 let cell = std::cell::UnsafeCell::new(sctx);
                 simulator::slap_run_simulation(&cell, g);
@@ -110,11 +127,13 @@ fn main() {
             data,
             average,
             compact,
+            block_size,
         } => {
             let ctx = Context {
                 arena: bumpalo::Bump::new(),
                 dump_node: false,
                 printer: UnsafeCell::new(Box::new(std::io::stderr())),
+                block_size,
             };
             let (g, vaddrs) = graph::Graph::new_from_file(&ctx, &format!("{}", input.display()))
                 .expect("failed to parse mlir");
